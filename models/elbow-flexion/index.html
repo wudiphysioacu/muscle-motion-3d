@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>肘關節屈曲 3D</title>
+<style>
+:root{
+  --bg1:#202a3a;--bg2:#0b0e14;--panel:rgba(16,20,28,.86);--text:#eef1f6;--muted:#9aa4b5;
+  --red:#e2574c;--blue:#5b9bf0;--line:rgba(255,255,255,.12);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;color:var(--text);
+  background:radial-gradient(ellipse at 50% 30%,var(--bg1),var(--bg2) 75%);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;left:0;top:0;transform:translate(-50%,-50%);font-size:13px;line-height:1.25;
+  padding:4px 9px;border-radius:8px;background:rgba(10,12,18,.74);border:1px solid var(--line);
+  white-space:nowrap;text-align:center;opacity:0}
+.lbl small{display:block;color:var(--muted);font-size:10.5px}
+.lbl.bone{color:#e9dfc6}
+.lbl.muscle{border-color:rgba(226,87,76,.55)}
+.lbl.pt{font-size:11.5px;padding:3px 8px}
+.lbl.o{border-color:var(--red)} .lbl.i{border-color:var(--blue)}
+.lbl.o b{color:#ff8a7f} .lbl.i b{color:#8fbcff}
+header{position:fixed;top:16px;left:16px;right:16px;pointer-events:none}
+h1{font-size:22px;margin:0 0 2px;letter-spacing:.5px}
+header p{margin:0;color:var(--muted);font-size:13px}
+#status{position:fixed;left:16px;top:76px;max-width:min(420px,calc(100% - 32px));background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px;line-height:1.55;backdrop-filter:blur(6px)}
+#angle{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;margin-right:6px;vertical-align:1px}
+.tag.on{background:rgba(226,87,76,.22);color:#ff9c92;border:1px solid rgba(226,87,76,.5)}
+.tag.off{background:rgba(91,155,240,.18);color:#9cc4ff;border:1px solid rgba(91,155,240,.45)}
+#controls{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+  justify-content:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 14px;
+  width:min(760px,calc(100% - 32px));backdrop-filter:blur(6px)}
+#controls button,#controls select{font:inherit;font-size:14px;color:var(--text);background:#2a3243;border:1px solid var(--line);
+  border-radius:9px;padding:7px 12px;cursor:pointer}
+#controls button:hover{background:#344057}
+#play{min-width:76px}
+#slider{flex:1 1 180px;accent-color:var(--red)}
+#controls label{font-size:14px;color:var(--muted);display:flex;gap:5px;align-items:center;cursor:pointer;user-select:none}
+#info{position:fixed;right:16px;top:16px;width:min(340px,calc(100% - 32px));max-height:calc(100% - 120px);overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;font-size:14px;line-height:1.6;backdrop-filter:blur(6px)}
+#info h2{margin:0;font-size:19px}
+#info .en{color:var(--muted);font-size:13px;margin-bottom:8px}
+#info dt{color:var(--muted);font-size:12px;margin-top:8px}
+#info dd{margin:0}
+#info .close{position:absolute;right:10px;top:8px;background:none;border:0;color:var(--muted);font-size:22px;cursor:pointer}
+#info[hidden]{display:none}
+#hint{position:fixed;right:16px;bottom:96px;color:var(--muted);font-size:12px;text-align:right;pointer-events:none}
+#note{position:fixed;left:16px;bottom:96px;color:#7f8899;font-size:11px;max-width:300px;pointer-events:none}
+#loading{position:fixed;inset:0;display:grid;place-items:center;color:var(--muted)}
+@media (max-width:700px){
+  header{top:10px} h1{font-size:18px}
+  #status{top:58px;font-size:13px;padding:8px 12px} #angle{font-size:17px}
+  #info{top:auto;bottom:150px;right:16px;max-height:45%}
+  #hint,#note{display:none}
+  .lbl{font-size:11.5px;padding:3px 7px}
+}
+</style>
+<script type="importmap">
+{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="labels"></div>
+<div id="loading">載入 3D 模型中…</div>
+
+<header>
+  <h1>肘關節屈曲</h1>
+  <p>Elbow flexion · 肱二頭肌、肱肌與肱三頭肌（右手臂，前外側視角）</p>
+</header>
+
+<div id="status">
+  <div id="angle">屈肘 0°</div>
+  <div id="s1"></div>
+  <div id="s2"></div>
+</div>
+
+<aside id="info" hidden>
+  <button class="close" id="infoClose" aria-label="關閉">×</button>
+  <div id="infoBody"></div>
+</aside>
+
+<div id="hint">點選肌肉：看起點、止點與作用<br>拖曳旋轉 · 滾輪或雙指縮放</div>
+<div id="note">示意模型：骨骼與肌肉的比例、路徑已簡化，供衛教說明，不作診斷用途。</div>
+
+<div id="controls">
+  <button id="play">暫停</button>
+  <input id="slider" type="range" min="0" max="130" step="1" value="0" aria-label="屈肘角度">
+  <select id="speed" aria-label="速度">
+    <option value="0.5">慢速</option>
+    <option value="1" selected>正常</option>
+    <option value="1.6">快速</option>
+  </select>
+  <label><input type="checkbox" id="tLabels" checked>標籤</label>
+  <label><input type="checkbox" id="tSkin">皮膚輪廓</label>
+  <button id="reset">重設視角</button>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ---------- renderer / scene ---------- */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 500);
+const HOME_POS = new THREE.Vector3(98, 0, 54);
+const HOME_TARGET = new THREE.Vector3(-1, -22, 4);
+camera.position.copy(HOME_POS);
+
+const controls = new OrbitControls(camera, canvas);
+controls.target.copy(HOME_TARGET);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 14;
+controls.maxDistance = 120;
+
+scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x2a2018, 0.55));
+const key = new THREE.DirectionalLight(0xfff1e0, 2.2); key.position.set(30, 30, 40); scene.add(key);
+const rim = new THREE.DirectionalLight(0x9fc4ff, 1.4); rim.position.set(-30, 10, -35); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(-20, -30, 30); scene.add(fill);
+
+/* ---------- variable-radius tube geometry ---------- */
+function makeTube(radial, segs) {
+  const g = new THREE.BufferGeometry();
+  const n = (segs + 1) * (radial + 1);
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3));
+  const uv = new Float32Array(n * 2);
+  for (let i = 0; i <= segs; i++) for (let j = 0; j <= radial; j++) {
+    const k = i * (radial + 1) + j; uv[k * 2] = j / radial; uv[k * 2 + 1] = i / segs;
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  const idx = [];
+  for (let i = 0; i < segs; i++) for (let j = 0; j < radial; j++) {
+    const a = i * (radial + 1) + j, b = a + radial + 1;
+    idx.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  g.setIndex(idx);
+  g.userData = { radial, segs };
+  return g;
+}
+
+const _T = new THREE.Vector3(), _N = new THREE.Vector3(), _B = new THREE.Vector3(), _P = new THREE.Vector3(), _R = new THREE.Vector3();
+function updateTube(g, points, radiusFn, colorFn) {
+  const { radial, segs } = g.userData;
+  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
+  const pos = g.attributes.position.array, nor = g.attributes.normal.array, col = g.attributes.color.array;
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    curve.getPointAt(t, _P);
+    curve.getTangentAt(t, _T).normalize();
+    if (i === 0) {
+      _R.set(1, 0, 0);
+      if (Math.abs(_T.dot(_R)) > 0.9) _R.set(0, 0, 1);
+      _N.crossVectors(_T, _R).normalize();
+    } else {
+      _N.addScaledVector(_T, -_N.dot(_T)).normalize(); // parallel transport
+    }
+    _B.crossVectors(_T, _N).normalize();
+    const r = radiusFn(t);
+    const c = colorFn ? colorFn(t) : null;
+    for (let j = 0; j <= radial; j++) {
+      const a = (j / radial) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+      const nx = _N.x * ca + _B.x * sa, ny = _N.y * ca + _B.y * sa, nz = _N.z * ca + _B.z * sa;
+      const k = (i * (radial + 1) + j) * 3;
+      pos[k] = _P.x + nx * r; pos[k + 1] = _P.y + ny * r; pos[k + 2] = _P.z + nz * r;
+      nor[k] = nx; nor[k + 1] = ny; nor[k + 2] = nz;
+      if (c) { col[k] = c[0]; col[k + 1] = c[1]; col[k + 2] = c[2]; }
+    }
+  }
+  g.attributes.position.needsUpdate = true;
+  g.attributes.normal.needsUpdate = true;
+  if (colorFn) g.attributes.color.needsUpdate = true;
+  g.computeBoundingSphere();
+  return curve;
+}
+
+const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
+// rounded ends so bone tubes close smoothly
+const capped = (fn, e = 0.05) => (t) => {
+  let r = fn(t); const d = Math.min(t, 1 - t);
+  if (d < e) { const s = d / e; r *= Math.sqrt(Math.max(0, 1 - (1 - s) * (1 - s))); }
+  return Math.max(r, 0.001);
+};
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+
+/* ---------- materials ---------- */
+function noiseTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const x = c.getContext('2d'); const img = x.createImageData(256, 256);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 200 + Math.random() * 55; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 6);
+  return t;
+}
+function fiberTexture() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = '#c9c9c9'; x.fillRect(0, 0, 512, 128);
+  for (let i = 0; i < 512; i += 1.6) {
+    const v = 150 + Math.random() * 105;
+    x.fillStyle = `rgb(${v},${v},${v})`;
+    x.fillRect(i, 0, 0.8 + Math.random() * 1.4, 128);
+  }
+  // faint perimysium bands between fascicles
+  for (let i = 0; i < 512; i += 18 + Math.random() * 14) {
+    x.fillStyle = 'rgba(255,240,235,.55)'; x.fillRect(i, 0, 1.2, 128);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 3);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const fib = fiberTexture();
+const boneNoise = noiseTexture();
+const boneMat = new THREE.MeshPhysicalMaterial({
+  color: 0xe8dcc0, roughness: 0.62, metalness: 0, clearcoat: 0.15, clearcoatRoughness: 0.6,
+  bumpMap: boneNoise, bumpScale: 0.6
+});
+const cartMat = new THREE.MeshPhysicalMaterial({ color: 0xd9e4ea, roughness: 0.3, clearcoat: 0.6, transparent: true, opacity: 0.9 });
+const skinMat = new THREE.MeshPhysicalMaterial({
+  color: 0xe7b496, roughness: 0.5, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide
+});
+function muscleMaterial() {
+  return new THREE.MeshPhysicalMaterial({
+    vertexColors: true, map: fib, bumpMap: fib, bumpScale: 1.2,
+    roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.4,
+    sheen: 0.25, sheenColor: new THREE.Color(0xc0503f), sheenRoughness: 0.6,
+    emissive: new THREE.Color(0xff2a10), emissiveIntensity: 0, transparent: true, opacity: 1
+  });
+}
+
+/* ---------- skeleton ---------- */
+const E = new THREE.Vector3(0, -30, 0);          // elbow joint centre (flexion axis = x)
+const anatomy = new THREE.Group(); scene.add(anatomy);
+const forearm = new THREE.Group(); forearm.position.copy(E); anatomy.add(forearm);
+
+function staticTube(points, rfn, parent, mat = boneMat, radial = 28, segs = 90) {
+  const g = makeTube(radial, segs);
+  updateTube(g, points.map(V), capped(rfn), null);
+  const m = new THREE.Mesh(g, mat); parent.add(m); return m;
+}
+function blob(pos, r, parent, scale = [1, 1, 1], mat = boneMat) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 40, 28), mat);
+  m.position.set(...pos); m.scale.set(...scale); parent.add(m); return m;
+}
+
+// Humerus
+staticTube([[0.2, -0.6, -0.1], [0.05, -5, 0], [0, -14, 0.05], [0, -22, 0.1], [0, -27.4, 0.15], [0, -29.2, 0.15]],
+  (t) => t < 0.12 ? lerp(1.75, 1.15, t / 0.12) : t < 0.7 ? lerp(1.15, 1.0, (t - 0.12) / 0.58) : lerp(1.0, 1.6, (t - 0.7) / 0.3),
+  anatomy);
+blob([0.35, 0.45, 0], 2.35, anatomy);                    // humeral head
+blob([1.75, 0.55, 0.55], 1.05, anatomy);                 // greater tubercle
+blob([0.15, 0.25, 1.75], 0.62, anatomy);                 // lesser tubercle
+const condyle = new THREE.Mesh(new THREE.CapsuleGeometry(1.25, 2.9, 10, 32), boneMat);
+condyle.rotation.z = Math.PI / 2; condyle.position.set(-0.2, -30, 0.15); anatomy.add(condyle); // trochlea + capitulum
+blob([-2.65, -29.3, -0.25], 0.8, anatomy, [1.1, 1, 0.9]);   // medial epicondyle
+blob([2.0, -29.3, -0.1], 0.6, anatomy);                    // lateral epicondyle
+
+// Scapula (simplified)
+const scapShape = new THREE.Shape();
+scapShape.moveTo(-2.7, 1.0); scapShape.lineTo(-3.4, 2.5); scapShape.lineTo(-9.6, 3.3);
+scapShape.quadraticCurveTo(-11.4, 1.5, -11.0, -1.5); scapShape.lineTo(-8.6, -13.0);
+scapShape.quadraticCurveTo(-7.4, -13.6, -6.6, -12.2); scapShape.lineTo(-3.1, -2.0); scapShape.closePath();
+const scap = new THREE.Mesh(new THREE.ExtrudeGeometry(scapShape, {
+  depth: 0.45, bevelEnabled: true, bevelThickness: 0.35, bevelSize: 0.35, bevelSegments: 4, curveSegments: 24
+}), boneMat);
+scap.position.set(-0.4, 0, -3.6); scap.rotation.y = 0.62; scap.scale.setScalar(0.9); anatomy.add(scap);
+staticTube([[-3.6, 0.4, -2.6], [-3.0, 0.4, -1.2], [-2.6, 0.4, -0.35]], () => 0.95, anatomy);  // scapular neck
+blob([-2.55, 0.4, -0.3], 1.35, anatomy, [0.42, 1.25, 0.95], cartMat);                         // glenoid fossa
+staticTube([[-10.2, 2.3, -3.7], [-5.5, 2.8, -3.9], [-1.8, 3.4, -2.7], [0.9, 3.7, -0.7], [1.6, 3.6, 0.4]],
+  (t) => lerp(0.45, 0.7, t), anatomy);                                                         // spine + acromion
+staticTube([[-3.3, 1.3, -2.3], [-3.0, 2.4, 0.1], [-2.3, 1.9, 2.4]], (t) => lerp(0.55, 0.38, t), anatomy); // coracoid
+
+// Forearm (local frame: -y runs down the forearm, +z is the palm side)
+staticTube([[-0.55, 1.75, -1.25], [-0.5, 0.4, -0.95], [-0.45, -1.6, 0.15], [-0.6, -8, -0.15], [-0.8, -17, -0.1], [-0.95, -25.6, 0]],
+  (t) => t < 0.14 ? 1.15 : lerp(1.15, 0.55, (t - 0.14) / 0.86) + (t > 0.93 ? (t - 0.93) * 3 : 0), forearm);   // ulna
+blob([-0.4, -1.2, 0.95], 0.55, forearm);                // coronoid process
+staticTube([[1.25, -0.6, 0.15], [1.2, -2.5, 0.35], [1.05, -9, 0.4], [0.95, -17, 0.3], [1.05, -25.6, 0.15]],
+  (t) => t < 0.07 ? 0.85 : t < 0.12 ? 0.55 : lerp(0.6, 1.1, (t - 0.12) / 0.88), forearm);                   // radius
+const radHead = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.82, 0.7, 32), cartMat);
+radHead.position.set(1.25, -0.75, 0.15); forearm.add(radHead);
+blob([0.95, -3.2, 0.85], 0.42, forearm);                // radial tuberosity
+blob([0.1, -26.6, 0.1], 1.0, forearm, [2.2, 0.85, 1.0]); // carpals (wrist)
+
+// Skin silhouette (optional)
+const skin = new THREE.Group(); anatomy.add(skin);
+staticTube([[0, 3.2, -0.3], [0, -6, 0.2], [0, -18, 0.6], [0, -26, 0.3], [0, -31.5, 0]],
+  (t) => t < 0.15 ? lerp(4.4, 4.7, t / 0.15) : lerp(4.7, 3.4, (t - 0.15) / 0.85), skin, skinMat, 40, 60);
+const skinFore = new THREE.Group(); forearm.add(skinFore);
+staticTube([[0, 1.6, -0.2], [0, -6, 0.4], [0, -16, 0.3], [0, -27.5, 0.1]],
+  (t) => t < 0.3 ? lerp(3.3, 3.5, t / 0.3) : lerp(3.5, 2.3, (t - 0.3) / 0.7), skinFore, skinMat, 40, 60);
+skin.visible = skinFore.visible = false;
+
+/* ---------- muscles ---------- */
+const TENDON = [0.86, 0.83, 0.74];
+const BELLY = [0.5, 0.035, 0.04];
+
+const MUSCLES = {
+  biceps: {
+    name: '肱二頭肌', en: 'Biceps brachii', role: 'agonist',
+    origin: '長頭：肩胛骨盂上結節<br>短頭：肩胛骨喙突',
+    insertion: '橈骨粗隆、肱二頭肌腱膜',
+    action: '屈肘；把前臂轉成掌心朝上（旋後）；協助肩關節往前抬',
+    nerve: '肌皮神經（C5–C6）',
+    pain: '肩前方的結節間溝（長頭肌腱）、肘窩前方的遠端肌腱',
+    points: [
+      { head: 0, end: 'o', text: '盂上結節', sub: '長頭起點', off: [0, 3, -5] },
+      { head: 1, end: 'o', text: '喙突', sub: '短頭起點', off: [0, 1, 6] },
+      { head: 0, end: 'i', text: '橈骨粗隆', sub: '止點', off: [0, -2, 4] }
+    ]
+  },
+  brachialis: {
+    name: '肱肌', en: 'Brachialis', role: 'agonist',
+    origin: '肱骨前面下半部',
+    insertion: '尺骨粗隆、冠狀突',
+    action: '屈肘的主力；不論掌心朝上或朝下都在出力',
+    nerve: '肌皮神經（C5–C6），外側部分常有橈神經分支',
+    pain: '上臂前下方、肘前方深處',
+    points: [
+      { head: 0, end: 'o', text: '肱骨前面下半部', sub: '起點', off: [0, 0, 5.5] },
+      { head: 0, end: 'i', text: '尺骨粗隆', sub: '止點', off: [0, -3, 4] }
+    ]
+  },
+  triceps: {
+    name: '肱三頭肌', en: 'Triceps brachii', role: 'antagonist',
+    origin: '長頭：肩胛骨盂下結節<br>外側頭：肱骨後面上方<br>內側頭：肱骨後面下方（本模型未分開顯示）',
+    insertion: '尺骨鷹嘴',
+    action: '伸肘；長頭協助肩關節往後伸、內收。屈肘時它是拮抗肌，會被拉長',
+    nerve: '橈神經（C6–C8）',
+    pain: '肘後方鷹嘴附著處、肩後下方（長頭起點）',
+    points: [
+      { head: 0, end: 'o', text: '盂下結節', sub: '長頭起點', off: [0, 1, -6] },
+      { head: 1, end: 'o', text: '肱骨後面', sub: '外側頭起點', off: [0, -1, -6.5] },
+      { head: 0, end: 'i', text: '尺骨鷹嘴', sub: '止點', off: [0, -2, -5] }
+    ]
+  }
+};
+
+// Each head: fixed proximal path (world), insertion on the forearm (local), bulge direction, shape.
+const HEADS = [
+  { m: 'biceps', fixed: [[-2.0, 1.95, -0.3], [-0.6, 2.8, 1.1], [0.35, 0.65, 2.55], [0.7, -5, 3.4]],
+    ins: [0.9, -3.2, 0.95], bulge: [0.15, 0, 1], amt: 2.0, bellyR: 1.75, tendonR: 0.22, a: 0.3, b: 0.86, wrap: 0 },
+  { m: 'biceps', fixed: [[-2.2, 1.65, 2.6], [-1.7, -2, 3.4], [-1.1, -6, 3.7]],
+    ins: [0.9, -3.2, 0.95], bulge: [-0.2, 0, 1], amt: 1.9, bellyR: 1.6, tendonR: 0.22, a: 0.17, b: 0.86, wrap: 0 },
+  { m: 'brachialis', fixed: [[0.3, -12.5, 1.1], [0.6, -18, 1.9]],
+    ins: [-0.4, -2.5, 0.65], bulge: [0.35, 0, 1], amt: 0.9, bellyR: 1.9, tendonR: 0.35, a: -0.12, b: 0.8, wrap: 1.9 },
+  { m: 'triceps', fixed: [[-1.9, -2.2, -1.3], [-1.1, -7, -3.7], [-0.6, -15, -4.4]],
+    ins: [-0.5, 1.9, -1.4], bulge: [-0.1, 0, -1], amt: 1.2, bellyR: 2.0, tendonR: 0.3, a: 0.1, b: 0.8, wrap: 2.3 },
+  { m: 'triceps', fixed: [[1.6, -5.5, -1.4], [1.9, -11, -3.2], [1.1, -17, -3.9]],
+    ins: [-0.5, 1.9, -1.4], bulge: [0.3, 0, -1], amt: 1.0, bellyR: 1.75, tendonR: 0.3, a: 0.04, b: 0.78, wrap: 2.3 }
+];
+
+const muscleMeshes = [];
+for (const h of HEADS) {
+  h.fixedV = h.fixed.map(V); h.insV = V(h.ins); h.bulgeV = V(h.bulge).normalize();
+  h.geo = makeTube(36, 110);
+  h.mat = muscleMaterial();
+  h.mesh = new THREE.Mesh(h.geo, h.mat);
+  h.mesh.userData.muscle = h.m;
+  h.mesh.renderOrder = 2;
+  anatomy.add(h.mesh); muscleMeshes.push(h.mesh);
+  h.colored = false;
+}
+
+const _I = new THREE.Vector3();
+function headPoints(h) {
+  _I.copy(h.insV).applyMatrix4(forearm.matrixWorld);
+  const G = h.fixedV[h.fixedV.length - 1];
+  const pts = h.fixedV.map(v => v.clone());
+  for (const f of [0.28, 0.52, 0.74, 0.9]) {
+    const p = G.clone().lerp(_I, f).addScaledVector(h.bulgeV, Math.sin(Math.PI * f) * h.amt);
+    if (h.wrap) { // keep the path from cutting through the elbow joint (wraps around the trochlea)
+      const dy = p.y - E.y, dz = p.z - E.z, d = Math.hypot(dy, dz);
+      if (d < h.wrap && d > 1e-4) { p.y = E.y + dy / d * h.wrap; p.z = E.z + dz / d * h.wrap; }
+    }
+    pts.push(p);
+  }
+  pts.push(_I.clone());
+  return pts;
+}
+const polyLen = (pts) => { let L = 0; for (let i = 1; i < pts.length; i++) L += pts[i].distanceTo(pts[i - 1]); return L; };
+function bellOf(h, t) {
+  const s = (t - h.a) / (h.b - h.a);
+  return (s <= 0 || s >= 1) ? 0 : Math.pow(Math.sin(Math.PI * s), 0.75);
+}
+
+/* ---------- labels ---------- */
+const labelsEl = document.getElementById('labels');
+const labels = [];
+function addLabel(html, cls, getPos, group = 'base') {
+  const el = document.createElement('div'); el.className = 'lbl ' + cls; el.innerHTML = html;
+  labelsEl.appendChild(el);
+  const L = { el, getPos, group, visible: true }; labels.push(L); return L;
+}
+const fw = (x, y, z) => () => new THREE.Vector3(x, y, z).applyMatrix4(forearm.matrixWorld);
+addLabel('肱骨<small>Humerus</small>', 'bone', () => new THREE.Vector3(2.4, -25.5, -1.6));
+addLabel('肩胛骨<small>Scapula</small>', 'bone', () => new THREE.Vector3(-7, -11, -6.5));
+addLabel('橈骨<small>Radius</small>', 'bone', fw(2.4, -9, 2.4));
+addLabel('尺骨<small>Ulna</small>', 'bone', fw(-2.4, -20, -2.4));
+
+const headCurves = new Map();
+const muscleLabelPos = {
+  biceps: () => { const c = headCurves.get(HEADS[0]); return c ? c.getPointAt(0.6).add(new THREE.Vector3(0.8, 0, 2.6)) : new THREE.Vector3(); },
+  brachialis: () => { const c = headCurves.get(HEADS[2]); return c ? c.getPointAt(0.45).add(new THREE.Vector3(3.2, 0, 0.6)) : new THREE.Vector3(); },
+  triceps: () => { const c = headCurves.get(HEADS[3]); return c ? c.getPointAt(0.45).add(new THREE.Vector3(0.5, 0, -2.8)) : new THREE.Vector3(); }
+};
+for (const k of Object.keys(MUSCLES)) {
+  addLabel(`${MUSCLES[k].name}<small>${MUSCLES[k].en}</small>`, 'muscle', muscleLabelPos[k]);
+}
+
+// origin / insertion markers for the selected muscle
+const markerGeo = new THREE.SphereGeometry(0.42, 24, 16);
+const markerO = new THREE.MeshBasicMaterial({ color: 0xff5a4c, depthTest: false, transparent: true });
+const markerI = new THREE.MeshBasicMaterial({ color: 0x5b9bf0, depthTest: false, transparent: true });
+const markers = [];
+for (const k of Object.keys(MUSCLES)) {
+  const heads = HEADS.filter(h => h.m === k);
+  for (const p of MUSCLES[k].points) {
+    const h = heads[p.head];
+    const mesh = new THREE.Mesh(markerGeo, p.end === 'o' ? markerO : markerI);
+    mesh.renderOrder = 10; mesh.visible = false; anatomy.add(mesh);
+    const getPos = () => p.end === 'o' ? h.fixedV[0].clone() : h.insV.clone().applyMatrix4(forearm.matrixWorld);
+    const lbl = addLabel(`<b>${p.end === 'o' ? '起點' : '止點'}</b> · ${p.text}<small>${MUSCLES[k].name}${p.sub}</small>`,
+      'pt ' + p.end, () => getPos().add(V(p.off)), k);
+    markers.push({ k, mesh, getPos, lbl });
+  }
+}
+
+/* ---------- state ---------- */
+const MAX_ANGLE = 130 * Math.PI / 180;
+let theta = 0, prevTheta = 0, playing = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+let phase = 0, speed = 1, selected = null, showLabels = true;
+
+function setTheta(th) {
+  theta = th;
+  forearm.rotation.x = -theta;
+  forearm.updateMatrixWorld(true);
+}
+
+// rest lengths with the elbow straight
+setTheta(0);
+for (const h of HEADS) h.rest = polyLen(headPoints(h));
+
+function updateMuscles(dTheta) {
+  const load = Math.sin(theta);                     // gravity torque on the forearm, peaks at 90°
+  for (const h of HEADS) {
+    const pts = headPoints(h);
+    const L = polyLen(pts);
+    const ratio = h.rest / L;
+    const scale = Math.min(1.65, Math.max(0.72, Math.sqrt(ratio)));   // roughly constant volume
+    h.ratio = L / h.rest;
+    const rfn = (t) => {
+      const bell = bellOf(h, t);
+      let r = h.tendonR + (h.bellyR * scale - h.tendonR) * bell;
+      const d = Math.min(t, 1 - t); if (d < 0.012) r *= 0.45 + 0.55 * d / 0.012;
+      return r;
+    };
+    const cfn = h.colored ? null : (t) => {
+      const k = smooth(0.0, 0.3, bellOf(h, t));
+      return [lerp(TENDON[0], BELLY[0], k), lerp(TENDON[1], BELLY[1], k), lerp(TENDON[2], BELLY[2], k)];
+    };
+    headCurves.set(h, updateTube(h.geo, pts, rfn, cfn));
+    h.colored = true;
+
+    const agon = MUSCLES[h.m].role === 'agonist';
+    const act = agon ? 0.12 + 0.88 * load : 0.04;
+    h.mat.emissiveIntensity = act * 0.55;
+    h.mat.emissive.setHex(agon ? 0xff3010 : 0x2050ff);
+    const dim = selected && selected !== h.m;
+    h.mat.opacity = dim ? 0.16 : 1;
+    h.mat.depthWrite = !dim;
+  }
+
+  // status text
+  const deg = Math.round(theta * 180 / Math.PI);
+  document.getElementById('angle').textContent = `屈肘 ${deg}°`;
+  const pct = Math.round((1 - HEADS[0].ratio) * 100);
+  const tPct = Math.round((HEADS[3].ratio - 1) * 100);
+  let flexState;
+  if (Math.abs(dTheta) < 1e-4) flexState = deg < 3 ? '放鬆' : '等長收縮（維持姿勢）';
+  else flexState = dTheta > 0 ? '向心收縮（縮短、變粗）' : '離心收縮（邊出力邊拉長，控制放下）';
+  document.getElementById('s1').innerHTML =
+    `<span class="tag on">主動肌</span>肱二頭肌、肱肌：${flexState}${pct > 0 ? `，肱二頭肌縮短約 ${pct}%` : ''}`;
+  document.getElementById('s2').innerHTML =
+    `<span class="tag off">拮抗肌</span>肱三頭肌：${tPct > 0 ? `被拉長約 ${tPct}%` : '放鬆'}`;
+}
+
+/* ---------- interaction ---------- */
+const slider = document.getElementById('slider');
+const playBtn = document.getElementById('play');
+function setPlaying(p) { playing = p; playBtn.textContent = p ? '暫停' : '播放'; }
+setPlaying(playing);
+playBtn.onclick = () => {
+  if (!playing) phase = Math.acos(Math.min(1, Math.max(-1, 1 - 2 * theta / MAX_ANGLE)));
+  setPlaying(!playing);
+};
+slider.oninput = () => { setPlaying(false); setTheta(+slider.value * Math.PI / 180); };
+document.getElementById('speed').onchange = (e) => { speed = +e.target.value; };
+document.getElementById('tLabels').onchange = (e) => { showLabels = e.target.checked; };
+document.getElementById('tSkin').onchange = (e) => { skin.visible = skinFore.visible = e.target.checked; };
+document.getElementById('reset').onclick = () => { camera.position.copy(HOME_POS); controls.target.copy(HOME_TARGET); };
+
+const info = document.getElementById('info');
+function select(k) {
+  selected = k;
+  for (const m of markers) { const on = m.k === k; m.mesh.visible = on; }
+  if (!k) { info.hidden = true; return; }
+  const d = MUSCLES[k];
+  document.getElementById('infoBody').innerHTML = `
+    <h2>${d.name}</h2><div class="en">${d.en} · ${d.role === 'agonist' ? '屈肘主動肌' : '屈肘時的拮抗肌'}</div>
+    <dl>
+      <dt><span style="color:#ff8a7f">●</span> 起點</dt><dd>${d.origin}</dd>
+      <dt><span style="color:#8fbcff">●</span> 止點</dt><dd>${d.insertion}</dd>
+      <dt>作用</dt><dd>${d.action}</dd>
+      <dt>神經支配</dt><dd>${d.nerve}</dd>
+      <dt>常見疼痛位置</dt><dd>${d.pain}</dd>
+    </dl>`;
+  info.hidden = false;
+}
+document.getElementById('infoClose').onclick = () => select(null);
+
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let down = null;
+canvas.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
+canvas.addEventListener('pointerup', (e) => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects(muscleMeshes, false)
+    .find(x => !selected || x.object.userData.muscle === selected || x.object.material.opacity > 0.5);
+  select(hit ? hit.object.userData.muscle : null);
+});
+
+/* ---------- loop ---------- */
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = w < 700 ? 42 : 32;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+const _v = new THREE.Vector3();
+function placeLabels() {
+  const w = innerWidth, h = innerHeight;
+  for (const L of labels) {
+    let show = showLabels && (L.group === 'base' || L.group === selected);
+    if (show) {
+      _v.copy(L.getPos()).project(camera);
+      if (_v.z > 1) show = false;
+      else L.el.style.transform = `translate(${(_v.x * 0.5 + 0.5) * w}px,${(-_v.y * 0.5 + 0.5) * h}px) translate(-50%,-50%)`;
+    }
+    L.el.style.opacity = show ? 1 : 0;
+  }
+  for (const m of markers) if (m.mesh.visible) m.mesh.position.copy(m.getPos());
+}
+
+const clock = new THREE.Clock();
+document.getElementById('loading').remove();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (playing) {
+    phase += dt * speed * 0.9;
+    setTheta(MAX_ANGLE * (0.5 - 0.5 * Math.cos(phase)));
+    slider.value = Math.round(theta * 180 / Math.PI);
+  }
+  const dTheta = theta - prevTheta; prevTheta = theta;
+  updateMuscles(dTheta);
+  controls.update();
+  renderer.render(scene, camera);
+  placeLabels();
+});
+</script>
+</body>
+</html>
