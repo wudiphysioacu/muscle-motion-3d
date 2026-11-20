@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Blender 備份檔
+*.blend1
+*.blend2
+
+# 原始教材與個資：不進版本庫
+*.pdf
+patient-data/
+
+# 網頁檢視器（之後若用到）
+node_modules/
